@@ -1,4 +1,5 @@
 // (C) Uri Wilensky. https://github.com/NetLogo/NetLogo
+
 package org.nlogo.lab.gui
 
 import org.nlogo.api.LabProtocol
@@ -115,5 +116,45 @@ class ProtocolEditable(protocol: LabProtocol,
               complain("Invalid format"); return None
           }}
       }))
+  }
+
+  override def invalidSettings: Seq[(String,String)] = {
+    def valueSetList: List[RefValueSet] = {
+      val list =
+        try { worldLock.synchronized {
+          compiler.readFromString("[" + valueSets + "]").asInstanceOf[LogoList]
+        } }
+      catch{ case ex: CompilerException => return List() }
+      for (o <- list.toList) yield {
+        o.asInstanceOf[LogoList].toList match {
+          case List(variableName: String, more: LogoList) =>
+            more.toList match {
+              case List(first: java.lang.Double,
+                        step: java.lang.Double,
+                        last: java.lang.Double) =>
+                new SteppedValueSet(variableName,
+                                    BigDecimal(Dump.number(first)),
+                                    BigDecimal(Dump.number(step)),
+                                    BigDecimal(Dump.number(last)))
+              case _ =>
+                return List()
+            }
+          case List(variableName: String, more@_*) =>
+            if(more.isEmpty) { return List() }
+              new RefEnumeratedValueSet(variableName, more.toList)
+          case _ =>
+            return List()
+        }}
+    }
+    val variableSize = valueSetList.map(_.toList.size).foldLeft(1)((accum, n) =>
+        (accum: Int) match {
+          case acc if acc > 0 && Int.MaxValue / acc >= n =>
+            accum * n
+          case _ => return Seq("Protocol" -> I18N.gui.getN("edit.general.invalidValues", "NetLogo Variables"))
+        })
+    if(repetitions > 0 && Int.MaxValue / repetitions >= variableSize)
+      Seq.empty[(String,String)]
+    else
+      Seq("Protocol" -> I18N.gui.getN("edit.general.invalidValues", "Repetitions"))
   }
 }
